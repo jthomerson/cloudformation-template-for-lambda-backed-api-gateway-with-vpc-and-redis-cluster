@@ -1,0 +1,26 @@
+{
+  "name": "cloudformation-template-for-lambda-backed-api-gateway-with-vpc-and-redis",
+  "version": "1.0.0",
+  "description": "An example of how to create a Lambda-backed API on AWS using API Gateway, calling your Lambda code, which uses a Redis cluster (which requires being created in your VPC), using CloudFormation to automate the entire deployment of the API and all its pieces.",
+  "main": "src/index.js",
+  "dependencies": {
+    "grunt": "^1.0.1"
+  },
+  "devDependencies": {
+    "grunt": "1.0.1",
+    "grunt-zip": "0.17.1"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jthomerson/cloudformation-template-for-lambda-backed-api-gateway-with-vpc-and-redis.git"
+  },
+  "author": "Jeremy Thomerson",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/jthomerson/cloudformation-template-for-lambda-backed-api-gateway-with-vpc-and-redis/issues"
+  },
+  "homepage": "https://github.com/jthomerson/cloudformation-template-for-lambda-backed-api-gateway-with-vpc-and-redis#readme"
+}
