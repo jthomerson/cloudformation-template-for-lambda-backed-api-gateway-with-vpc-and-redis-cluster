@@ -5,58 +5,60 @@
 
 'use strict';
 
-var AWS = require('aws-sdk'),
-    dynamo = new AWS.DynamoDB.DocumentClient();
+var _ = require('underscore'),
+    AWS = require('aws-sdk'),
+    redis = require('redis');
 
 exports.handler = function(event, context, callback) {
-   var method = event.context['http-method'].toUpperCase();
+   var method = event.context['http-method'].toUpperCase(),
+       elasticache = new AWS.ElastiCache({apiVersion: '2015-02-02'});
 
-   switch (method) {
-      case 'GET':
-         handleGet(event, context, callback);
-         break;
-      case 'POST':
-         handlePost(event, context, callback);
-         break;
-      default:
-         callback('Unsupported method');
-   }
+   elasticache.describeCacheClusters({ CacheClusterId: event.custom.ElastiCacheCluster, ShowCacheNodeInfo: true }, function(err, data) {
+      if (err) {
+         return callback('Error getting cache cluster config: ' + err);
+      }
+
+      console.log('got data', data);
+      event.CacheHost = data.CacheClusters[0].CacheNodes[0].Endpoint.Address;
+      console.log('connect to', event.CacheHost);
+
+      switch (method) {
+         case 'GET':
+            handleGet(event, context, callback);
+            break;
+         case 'POST':
+            handlePost(event, context, callback);
+            break;
+         default:
+            callback('Unsupported method');
+      }
+   });
 };
 
-function handlePost(event, context, callback) {
-   var params = {
-      TableName: event.custom.DynamoDBTableName,
-      // TODO: obviously there's no request validation going on here like there should be
-      Item: {
-         GUID: event['body-json'].GUID,
-         DueDate: event['body-json'].DueDate,
-         Title: event['body-json'].Title,
-         IsCompleted: event['body-json'].IsCompleted,
-      }
-   };
-
-   dynamo.put(params, function(err, data) {
-      if (err) {
-         callback(null, { customError: 'Error adding item: ' + JSON.stringify(err, null, 2) });
-      } else {
-         callback(null, {
-            data: data
-         });
-      }
-   });
+function handleGet(event, context, callback) {
+   callback('GET not yet implemented');
 }
 
-function handleGet(event, context, callback) {
-   var params = {
-      TableName: event.custom.DynamoDBTableName,
-      Limit: 10,
-   };
+function handlePost(event, context, callback) {
+   var client = redis.createClient({ host: event.CacheHost }),
+       userID = event['body-json'].userID,
+       gameID = event['body-json'].gameID,
+       score = event['body-json'].score;
 
-   dynamo.scan(params, function(err, data) {
-      callback(null, {
-         input: event,
-         err: err,
-         output: data
-      });
+   client.on('error', function(err) {
+      console.log('Error ' + err);
    });
+
+   if (_.isEmpty(userID) || _.isEmpty(gameID)) {
+      // send 'event' back for debugging - not something you'd do in real code
+      callback('Must supply "userID" and "gameID"', event);
+      client.quit();
+   } else {
+      var args = [ gameID, score, userID ];
+
+      client.zadd(args, function(err, response) {
+         callback(err, { redisResp: response });
+         client.quit();
+      });
+   }
 }
