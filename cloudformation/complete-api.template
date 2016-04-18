@@ -47,21 +47,30 @@
          "Description": "The ARN pointing to the Lambda function that creates custom API gateway resources (install from https://apigatewaycloudformation.bynordenfelt.com/). Example: arn:aws:lambda:us-east-1:123456789012:function:APIGatewayCustomResource-LambdaFunction-ABCDEFG123",
          "Type": "String"
       },
-      "DynamoReadCapacityUnits": {
-         "Description": "Provisioned read throughput",
+      "CacheClusterNodes": {
+         "Description": "Number of nodes to run in the cache cluster",
          "Type": "Number",
          "Default": "1",
          "MinValue": "1",
-         "MaxValue": "10000",
-         "ConstraintDescription": "must be between 1 and 10000"
+         "MaxValue": "10000"
       },
-      "DynamoWriteCapacityUnits": {
-         "Description": "Provisioned write throughput",
-         "Type": "Number",
-         "Default": "1",
-         "MinValue": "1",
-         "MaxValue": "10000",
-         "ConstraintDescription": "must be between 1 and 10000"
+      "CacheClusterNodeType": {
+         "Description": "Type of node to deploy (e.g. 'cache.t2.micro', which is the default)",
+         "Type": "String",
+         "Default": "cache.t2.micro"
+      },
+      "CacheClusterSubnetGroupName": {
+         "Description": "The subnet group to deploy the cache cluster to",
+         "Type": "String",
+         "Default": "default"
+      },
+      "VPCSecurityGroupIDs": {
+         "Description": "An comma-delimited list of strings - the security groups that your Lambda function and cache cluster should be in",
+         "Type": "CommaDelimitedList"
+      },
+      "VPCSubnetIDs": {
+         "Description": "An comma-delimited list of strings - the subnet IDs that your Lambda function should be assigned to",
+         "Type": "CommaDelimitedList"
       }
    },
 
@@ -77,6 +86,10 @@
             "Handler": "index.handler",
             "MemorySize": "128",
             "Role": { "Fn::GetAtt": [ "BackingLambdaExecutionRole", "Arn" ] },
+            "VpcConfig": {
+               "SecurityGroupIds": { "Ref": "VPCSecurityGroupIDs" },
+               "SubnetIds": { "Ref": "VPCSubnetIDs" }
+            },
             "Runtime": "nodejs4.3",
             "Timeout": "3"
          }
@@ -108,42 +121,28 @@
                {
                   "PolicyName": { "Fn::Join": [ "-", [ { "Ref": "AWS::StackName" }, "UseDBPolicy" ] ] },
                   "PolicyDocument": {
-                     "Version": "2012-10-17",
-                     "Statement": [
-                        {
-                           "Effect": "Allow",
-                           "Action": [
-                              "dynamodb:DeleteItem",
-                              "dynamodb:GetItem",
-                              "dynamodb:PutItem",
-                              "dynamodb:Query",
-                              "dynamodb:Scan",
-                              "dynamodb:UpdateItem"
-                           ],
-                           "Resource": {
-                              "Fn::Join": [
-                                 "",
-                                 [
-                                    "arn:aws:dynamodb:",
-                                    { "Ref": "AWS::Region" },
-                                    ":",
-                                    { "Ref": "AWS::AccountId" },
-                                    ":table/",
-                                    { "Ref": "APIDynamoDBTable" }
-                                 ]
-                              ]
-                           }
-                        },
-                        {
-                           "Effect": "Allow",
-                           "Action": [
-                              "logs:CreateLogGroup",
-                              "logs:CreateLogStream",
-                              "logs:PutLogEvents"
-                           ],
-                           "Resource": "*"
-                        }
-                     ]
+                    "Version": "2012-10-17",
+                    "Statement": [
+                      {
+                        "Effect": "Allow",
+                        "Action": [
+                          "logs:CreateLogGroup",
+                          "logs:CreateLogStream",
+                          "logs:PutLogEvents"
+                          ],
+                        "Resource": "arn:aws:logs:*:*:*"
+                      },
+                      {
+                        "Effect": "Allow",
+                        "Action": [
+                          "ec2:CreateNetworkInterface",
+                          "ec2:DescribeNetworkInterfaces",
+                          "ec2:DetachNetworkInterface",
+                          "ec2:DeleteNetworkInterface"
+                        ],
+                        "Resource": "*"
+                      }
+                    ]
                   }
                }
             ]
@@ -207,7 +206,7 @@
                "httpMethod": "POST",
                "requestTemplates": {
                   "application/json": [ "input-pass-through-full", {
-                     "DynamoDBTableName": { "Ref": "APIDynamoDBTable" }
+                     "ElastiCacheCluster": { "Ref": "ElastiCacheCluster" }
                   } ]
                },
                "requestParameters": {
@@ -260,7 +259,7 @@
                "httpMethod": "POST",
                "requestTemplates": {
                   "application/json": [ "input-pass-through-full", {
-                     "DynamoDBTableName": { "Ref": "APIDynamoDBTable" }
+                     "ElastiCacheCluster": { "Ref": "ElastiCacheCluster" }
                   } ]
                },
                "requestParameters": {
@@ -298,33 +297,15 @@
             }
          }
       },
-      "APIDynamoDBTable": {
-         "Type": "AWS::DynamoDB::Table",
+      "ElastiCacheCluster": {
+         "Type": "AWS::ElastiCache::CacheCluster",
          "Properties": {
-            "AttributeDefinitions": [
-               {
-                  "AttributeName": "GUID",
-                  "AttributeType": "S"
-               },
-               {
-                  "AttributeName": "DueDate",
-                  "AttributeType": "S"
-               }
-            ],
-            "KeySchema": [
-               {
-                  "AttributeName": "GUID",
-                  "KeyType": "HASH"
-               },
-               {
-                  "AttributeName": "DueDate",
-                  "KeyType": "RANGE"
-               }
-            ],
-            "ProvisionedThroughput": {
-               "ReadCapacityUnits": { "Ref": "DynamoReadCapacityUnits" },
-               "WriteCapacityUnits": { "Ref": "DynamoWriteCapacityUnits" }
-            }
+            "AutoMinorVersionUpgrade": true,
+            "CacheNodeType": { "Ref": "CacheClusterNodeType" },
+            "CacheSubnetGroupName": { "Ref": "CacheClusterSubnetGroupName" },
+            "Engine": "redis",
+            "NumCacheNodes": { "Ref": "CacheClusterNodes" },
+            "VpcSecurityGroupIds": { "Ref": "VPCSecurityGroupIDs" }
          }
       }
    },
@@ -334,9 +315,9 @@
          "Value": { "Ref": "BackingLambdaFunction" },
          "Description": "The Lambda function"
       },
-      "TableName": {
-         "Value": { "Ref": "APIDynamoDBTable" },
-         "Description": "The DynamoDB table"
+      "ElastiCacheCluster": {
+         "Value": { "Ref": "ElastiCacheCluster" },
+         "Description": "The ElastiCacheCluster"
       },
       "MainAPI": {
          "Value": { "Ref": "MainAPI" },
